@@ -1,30 +1,46 @@
 # Tracking Tabs
 
-Tracking Tabs is a private mobile-first daily number tracker built with Expo, React Native, and Supabase. It lets one user account track multiple named items, enter one count per date for each item, edit backdated data, and view each tracker as an independent GitHub-style heatmap.
+Tracking Tabs is a private daily number tracker built with Expo, React Native, and Supabase. It supports Android APK installs and a free GitHub Pages web app, both using the same Supabase account and synced data.
 
-The app is designed for personal use first: quick daily entry, synced data across devices, and an installable Android APK through EAS.
+Live web app:
 
-## Features
+https://deepgada.github.io/daily-grid-tracker/
 
-- Email/password authentication with Supabase Auth.
-- Cloud sync across devices using the same Supabase account.
-- Multiple named trackers, each with its own entries and heatmap.
-- Left hamburger drawer for tracker switching and adding trackers.
-- Long-press or action button on a tracker to rename or delete it.
-- One whole-number count per tracker per date.
-- Backdated editing through date picker, previous/next buttons, or heatmap tap.
-- Future dates are blocked.
-- Dynamic heatmap intensity: the highest count in the selected view is darkest.
-- Full RGB heatmap color selection with live shade preview.
-- Week start setting: Monday or Sunday.
-- Stats window setting: 30, 90, or 365 days.
-- Current streak, max streak, days at max, logged days, total, and daily average.
-- Right-side menu for global settings, reminder, backup sync, logout, and delete account.
-- Dark mode setting.
-- Local cache for faster startup and offline viewing.
-- Failed writes are queued locally and retried on refresh/startup.
-- Daily reminder setting for installed mobile builds through `expo-notifications`.
-- Supabase Row Level Security for per-user data isolation.
+## What It Does
+
+- Track multiple named items, each with its own graph and entries.
+- Enter one number/count per tracker per date.
+- Edit backdated entries.
+- Add an optional comment per date, limited to 100 characters.
+- View each tracker as a GitHub-style heatmap.
+- Heatmap color is fully customizable with RGB controls.
+- Highest value in the selected window is darkest; lower values become lighter.
+- View 30, 90, or 365 day stats windows.
+- See total, daily average, logged days, current streak, max streak, and days at max.
+- Double tap the graph to open a full graph view; Android back returns to normal view.
+- Use the same account on Android and web.
+
+## App Screens
+
+- Email/password sign in and sign up.
+- Left hamburger drawer for trackers.
+- Current tracker stays pinned at the top of the drawer.
+- Add tracker from the drawer.
+- Rename or delete tracker through long press or the tracker action button.
+- Right-side menu for settings, sync, logout, and account deletion.
+
+Google login is intentionally removed because Google OAuth is disabled for this project.
+
+## Settings
+
+- Dark mode with a black/charcoal theme.
+- Heatmap RGB color picker.
+- Week start day: Monday or Sunday.
+- Stats window: 30, 90, or 365 days.
+- Daily reminder notification time for installed mobile builds.
+- Backup sync status and manual Sync Now feedback.
+- Logout.
+- Delete account.
 
 ## Tech Stack
 
@@ -32,52 +48,59 @@ The app is designed for personal use first: quick daily entry, synced data acros
 - React 19
 - React Native 0.86
 - TypeScript
-- Supabase Auth and Postgres
-- Async Storage for local session/cache/pending writes
-- EAS Build for APK generation
+- Supabase Auth
+- Supabase Postgres with Row Level Security
+- Async Storage for local settings/cache/pending writes
+- Expo Notifications
+- EAS Build for Android APKs
+- GitHub Pages for free web hosting
 
 ## Project Structure
 
 ```text
-tracking-tabs/
-├─ App.tsx
-├─ app.json
-├─ eas.json
-├─ package.json
-├─ src/
-│  ├─ components/
-│  │  ├─ AuthScreen.tsx
-│  │  ├─ Heatmap365.tsx
-│  │  └─ TrackerScreen.tsx
-│  ├─ lib/
-│  │  ├─ storage.ts
-│  │  └─ supabase.ts
-│  ├─ services/
-│  │  └─ entries.ts
-│  ├─ types.ts
-│  └─ utils/
-│     └─ date.ts
-└─ supabase/
-   └─ schema.sql
+.
+|-- App.tsx
+|-- app.json
+|-- eas.json
+|-- package.json
+|-- src
+|   |-- components
+|   |   |-- AuthScreen.tsx
+|   |   |-- Heatmap365.tsx
+|   |   `-- TrackerScreen.tsx
+|   |-- lib
+|   |   |-- storage.ts
+|   |   `-- supabase.ts
+|   |-- services
+|   |   `-- entries.ts
+|   |-- types.ts
+|   `-- utils
+|       `-- date.ts
+|-- supabase
+|   `-- schema.sql
+|-- scripts
+|   `-- prepare-gh-pages.js
+`-- .github
+    `-- workflows
+        `-- pages.yml
 ```
 
 ## Supabase Setup
 
 1. Create a Supabase project.
-2. Open **SQL Editor**.
-3. Paste and run all of `supabase/schema.sql`.
-4. In **Authentication -> Providers**, enable Email.
-5. For development, you can temporarily disable email confirmation to avoid rate limits.
-6. Copy the project URL and publishable key from Supabase project API settings.
+2. Open Supabase SQL Editor.
+3. Paste and run `supabase/schema.sql`.
+4. In Authentication -> Providers, enable Email.
+5. Copy the project URL and publishable key from Supabase API settings.
 
 The schema creates:
 
-- `tracked_items`: one row per user-created tracker.
-- `daily_entries`: one count per user, tracker, and date.
-- RLS policies for tracked items and daily entries.
-- `delete_my_account()` RPC used by the Delete account setting.
+- `tracked_items`
+- `daily_entries`
+- per-user Row Level Security policies
+- `delete_my_account()` RPC for the in-app Delete account action
 
-Do not put a Supabase service-role key in this app.
+Never put a Supabase service-role key in this app.
 
 ## Environment
 
@@ -96,136 +119,149 @@ EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
 
 `.env` is ignored by Git.
 
+For GitHub Pages, the same public Supabase values are set in `.github/workflows/pages.yml`.
+
 ## Install
 
 ```bash
 npm install
 ```
 
-If Expo reports dependency mismatches:
-
-```bash
-npx expo install --fix
-```
-
 ## Run Locally
+
+Start Expo:
 
 ```bash
 npm start
 ```
 
-For web testing:
+Run web locally:
 
 ```bash
 npm run web
 ```
 
-For Android emulator/device through Expo:
+Run Android through Expo:
 
 ```bash
 npm run android
 ```
 
-The current local test URL is usually:
+## Web Build And Deploy
+
+Create a static web build:
+
+```bash
+npm run build:web
+```
+
+Create a GitHub Pages-compatible build:
+
+```bash
+npm run build:web:gh-pages
+```
+
+The GitHub Pages workflow deploys automatically on pushes to `main`:
 
 ```text
-http://localhost:8081
+.github/workflows/pages.yml
 ```
 
-## Build Android APK
+GitHub Pages source should be set to **GitHub Actions** in repo settings.
 
-Before building, make sure:
+## Android APK Build
 
-- `.env` contains your Supabase URL and publishable key.
-- You have run `supabase/schema.sql` in Supabase SQL Editor.
-- Email auth is enabled in Supabase.
-- The Android package in `app.json` is the package you want to keep for installs and updates.
-
-Sign in to Expo/EAS:
-
-```bash
-npx eas-cli@latest login
-```
-
-Configure if needed:
-
-```bash
-npx eas-cli@latest build:configure
-```
-
-Build preview APK:
+Build an installable preview APK with EAS:
 
 ```bash
 npm run build:apk
 ```
 
-The `preview` profile in `eas.json` is configured for an installable APK.
+The `preview` profile in `eas.json` builds an APK.
 
-## App Settings
+Before building on EAS, make sure the EAS preview environment has:
 
-The right-side menu includes:
+```text
+EXPO_PUBLIC_SUPABASE_URL
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+```
 
-- Dark mode
-- RGB heatmap color
-- Week start day
-- Stats window
-- Reminder notification time
-- Backup sync status and manual sync
-- Logout
-- Delete account
+## Local Android Build
 
-The left drawer includes:
+Local Android builds need Android Studio, Android SDK, and Java/JDK installed.
 
-- Current tracker pinned at top
-- Other trackers below
-- Add tracker
-- Rename/delete tracker through long press or the action button
+Generate native Android files:
+
+```bash
+npm run prebuild:android
+```
+
+Run locally:
+
+```bash
+npm run android:local
+```
+
+Build a debug APK locally:
+
+```bash
+npm run build:android:debug
+```
+
+The debug APK is generated under:
+
+```text
+android/app/build/outputs/apk/debug/
+```
 
 ## Data Behavior
 
 - Each user can create multiple trackers.
-- Each tracker can store one count per date.
+- Each tracker stores one number per date.
+- A comment can be attached to each date.
 - Saving `0` clears that date.
-- Entries are stored in Supabase and cached locally.
-- Offline saves are queued locally and retried.
-- If two devices edit the same tracker/date offline, the last change that reaches Supabase wins.
+- Supabase stores synced data.
+- Async Storage keeps local cache, settings, and pending offline writes.
+- Failed writes are queued locally and retried later.
+- If two devices edit the same tracker/date offline, the last synced change wins.
 
-## Validation
+## Privacy Notes
 
-Useful checks:
+- Supabase Auth identifies the user.
+- Row Level Security restricts rows to the authenticated user.
+- Local settings/cache/pending writes are stored on device.
+- Async Storage is persistent but not encrypted.
+- Delete account calls the Supabase RPC and cascades tracker data deletion.
+
+## Useful Checks
 
 ```bash
 npm run typecheck
 npm run doctor
 ```
 
-Current local validation performed during development:
+## Current Identifiers
 
-- TypeScript check passes.
-- Expo web bundle builds.
-- Supabase table access verified after running schema.
-
-## Privacy Notes
-
-- Supabase Auth identifies the user.
-- Row Level Security restricts data to `auth.uid() = user_id`.
-- Session, cached entries, settings, and pending writes use Async Storage.
-- Async Storage is persistent but not encrypted.
-- Delete account calls the `delete_my_account()` Supabase RPC, which deletes the authenticated user and cascades their tracker data.
-
-## Publishing Notes
-
-Before public distribution, change these identifiers in `app.json`:
+App name:
 
 ```text
-expo.android.package
-expo.ios.bundleIdentifier
+Tracking Tabs
 ```
 
-Current package:
+Version:
+
+```text
+0.1.0
+```
+
+Android package:
 
 ```text
 com.deepgada.trackingtabs
 ```
 
-Use a unique reverse-domain identifier you control before publishing widely.
+Web URL:
+
+```text
+https://deepgada.github.io/daily-grid-tracker/
+```
