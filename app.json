@@ -2,28 +2,25 @@
   "expo": {
     "name": "Tracking Tabs",
     "slug": "tracking-tabs",
-    "version": "1.0.0",
-    "orientation": "portrait",
+    "scheme": "trackingtabs",
+    "version": "0.1.0",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F7F8FA"
-    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.privategrid.dailytracker"
+      "bundleIdentifier": "com.deepgada.trackingtabs"
     },
     "android": {
-      "package": "com.privategrid.dailytracker",
+      "package": "com.deepgada.trackingtabs",
       "versionCode": 1,
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#F7F8FA"
+        "backgroundColor": "#101418"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
@@ -31,6 +28,11 @@
     ],
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "25aa8356-7d98-4e05-b8c3-fb3a86bf6d1e"
+      }
     }
   }
 }

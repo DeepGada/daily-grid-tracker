@@ -134,6 +134,13 @@ http://localhost:8081
 
 ## Build Android APK
 
+Before building, make sure:
+
+- `.env` contains your Supabase URL and publishable key.
+- You have run `supabase/schema.sql` in Supabase SQL Editor.
+- Email auth is enabled in Supabase.
+- The Android package in `app.json` is the package you want to keep for installs and updates.
+
 Sign in to Expo/EAS:
 
 ```bash
@@ -218,7 +225,7 @@ expo.ios.bundleIdentifier
 Current package:
 
 ```text
-com.privategrid.dailytracker
+com.deepgada.trackingtabs
 ```
 
 Use a unique reverse-domain identifier you control before publishing widely.

@@ -2,8 +2,8 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -109,36 +109,12 @@ export function AuthScreen() {
     }
   }
 
-  async function signInWithGoogle() {
-    setBusy(true);
-    setMessageTone('info');
-    setMessage('Opening Google sign-in...');
-    try {
-      const redirectTo = Platform.OS === 'web' && 'location' in globalThis ? globalThis.location.origin : undefined;
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: redirectTo ? { redirectTo } : undefined,
-      });
-      if (error) throw error;
-    } catch (error) {
-      const text = error instanceof Error ? error.message : 'Unknown error';
-      setMessageTone('error');
-      setMessage(text);
-      Alert.alert('Google sign-in failed', text);
-      setBusy(false);
-    }
-  }
-
   return (
     <KeyboardAvoidingView
       style={styles.page}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
     >
-      <View style={styles.brandMark}>
-        {Array.from({ length: 9 }).map((_, index) => (
-          <View key={index} style={[styles.brandCell, index > 4 && styles.brandCellDark]} />
-        ))}
-      </View>
+      <Image source={require('../../assets/icon.png')} style={styles.brandMark} />
       <Text style={styles.title}>Tracking Tabs</Text>
       <Text style={styles.subtitle}>Private daily number trackers with independent graph tabs.</Text>
 
@@ -177,16 +153,6 @@ export function AuthScreen() {
         </Pressable>
 
         <Pressable
-          accessibilityRole="button"
-          onPress={() => void signInWithGoogle()}
-          disabled={busy}
-          style={({ pressed }) => [styles.googleButton, pressed && styles.pressed, busy && styles.disabled]}
-        >
-          <Text style={styles.googleMark}>G</Text>
-          <Text style={styles.googleText}>Continue with Google</Text>
-        </Pressable>
-
-        <Pressable
           onPress={() => setMode(mode === 'signIn' ? 'signUp' : 'signIn')}
           style={styles.linkButton}
         >
@@ -221,27 +187,16 @@ export function AuthScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: '#F7FBF8',
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
   brandMark: {
-    width: 62,
-    height: 62,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
+    width: 74,
+    height: 74,
+    borderRadius: 18,
     alignSelf: 'center',
     marginBottom: 16,
-  },
-  brandCell: {
-    width: 18,
-    height: 18,
-    borderRadius: 4,
-    backgroundColor: '#BFD7FF',
-  },
-  brandCellDark: {
-    backgroundColor: '#2563EB',
   },
   title: {
     fontSize: 30,
@@ -263,7 +218,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#DCEFE2',
   },
   cardTitle: {
     fontSize: 22,
@@ -295,7 +250,7 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   primaryButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: '#16A34A',
     minHeight: 50,
     borderRadius: 12,
     alignItems: 'center',
@@ -307,39 +262,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
-  googleButton: {
-    minHeight: 50,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
-  },
-  googleMark: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    lineHeight: 24,
-    textAlign: 'center',
-    color: '#2563EB',
-    backgroundColor: '#EFF6FF',
-    fontWeight: '900',
-  },
-  googleText: {
-    color: '#111827',
-    fontSize: 15,
-    fontWeight: '800',
-  },
   linkButton: {
     paddingVertical: 14,
     alignItems: 'center',
   },
   linkText: {
-    color: '#2563EB',
+    color: '#16A34A',
     fontWeight: '700',
   },
   subtleButton: {
@@ -354,16 +282,16 @@ const styles = StyleSheet.create({
   messageBox: {
     padding: 12,
     borderRadius: 10,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#ECFDF5',
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: '#BBF7D0',
   },
   messageBoxError: {
     backgroundColor: '#FEF2F2',
     borderColor: '#FECACA',
   },
   messageText: {
-    color: '#1E3A8A',
+    color: '#14532D',
     fontSize: 12,
     lineHeight: 18,
     fontWeight: '700',

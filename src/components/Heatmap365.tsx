@@ -1,5 +1,5 @@
 import { useMemo, useRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import type { EntryMap } from '../types';
 import { buildHeatmapWeeks, formatDisplayDate, parseDateKey, WeekStart } from '../utils/date';
@@ -7,6 +7,7 @@ import { buildHeatmapWeeks, formatDisplayDate, parseDateKey, WeekStart } from '.
 const CELL = 14;
 const GAP = 3;
 const DEFAULT_LEVELS = ['#FFFFFF', '#DBEAFE', '#93C5FD', '#3B82F6', '#1D4ED8'];
+const DOUBLE_TAP_MS = 300;
 
 function intensity(value: number, maxValue: number, levelCount: number): number {
   if (value <= 0) return 0;
@@ -22,6 +23,8 @@ type Heatmap365Props = {
   weekStartsOn: WeekStart;
   days: number;
   onSelectDate: (dateKey: string) => void;
+  onDoubleTap?: () => void;
+  fitToWidth?: boolean;
 };
 
 export function Heatmap365({
@@ -31,36 +34,63 @@ export function Heatmap365({
   weekStartsOn = 'monday',
   days = 365,
   onSelectDate,
+  onDoubleTap,
+  fitToWidth = false,
 }: Heatmap365Props) {
   const scrollRef = useRef<ScrollView>(null);
+  const lastTapRef = useRef(0);
+  const { width, height } = useWindowDimensions();
   const weeks = useMemo(() => buildHeatmapWeeks(undefined, days, weekStartsOn), [days, weekStartsOn]);
   const maxValue = useMemo(() => Math.max(0, ...Object.values(entries)), [entries]);
   const dayLabels = weekStartsOn === 'sunday' ? ['S', 'M', '', 'W', '', 'F', ''] : ['M', '', 'W', '', 'F', '', 'S'];
+  const availableWidth = Math.max(260, width - 58);
+  const availableHeight = Math.max(120, height - 112);
+  const fittedCell = Math.max(
+    5,
+    Math.min(
+      CELL,
+      Math.floor((availableWidth - 12 - GAP * Math.max(0, weeks.length - 1)) / Math.max(1, weeks.length)),
+      Math.floor((availableHeight - 54 - GAP * 6) / 7),
+    ),
+  );
+  const cellSize = fitToWidth ? fittedCell : CELL;
+
+  function handleDayPress(key: string) {
+    const now = Date.now();
+    onSelectDate(key);
+    if (onDoubleTap && now - lastTapRef.current < DOUBLE_TAP_MS) {
+      onDoubleTap();
+    }
+    lastTapRef.current = now;
+  }
 
   return (
     <View>
       <View style={styles.chartRow}>
-        <View style={styles.dayLabels}>
+        <View style={[styles.dayLabels, { gap: GAP, paddingTop: fitToWidth ? 18 : 22 }]}>
           {dayLabels.map((label, index) => (
-            <Text key={`${label}-${index}`} style={styles.dayLabel}>{label}</Text>
+            <Text key={`${label}-${index}`} style={[styles.dayLabel, { height: cellSize, lineHeight: cellSize }]}>{label}</Text>
           ))}
         </View>
 
         <ScrollView
           ref={scrollRef}
           horizontal
-          showsHorizontalScrollIndicator={false}
-          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+          scrollEnabled={!fitToWidth}
+          showsHorizontalScrollIndicator={!fitToWidth}
+          onContentSizeChange={() => {
+            if (!fitToWidth) scrollRef.current?.scrollToEnd({ animated: false });
+          }}
           contentContainerStyle={styles.scrollContent}
         >
           <View>
-            <View style={styles.monthRow}>
+            <View style={[styles.monthRow, { height: fitToWidth ? 18 : 20 }]}>
               {weeks.map((week, weekIndex) => {
                 const marker = week.find((cell) => cell.inRange && cell.date.getDate() <= 7);
                 return (
-                  <View key={`month-${weekIndex}`} style={styles.monthSlot}>
+                  <View key={`month-${weekIndex}`} style={[styles.monthSlot, { width: cellSize + GAP }]}>
                     {marker ? (
-                      <Text style={styles.monthLabel} numberOfLines={1}>
+                      <Text style={[styles.monthLabel, fitToWidth && styles.monthLabelTight]} numberOfLines={1}>
                         {new Intl.DateTimeFormat(undefined, { month: 'short' }).format(marker.date)}
                       </Text>
                     ) : null}
@@ -69,9 +99,9 @@ export function Heatmap365({
               })}
             </View>
 
-            <View style={styles.weeksRow}>
+            <View style={[styles.weeksRow, { gap: GAP }]}>
               {weeks.map((week, weekIndex) => (
-                <View key={`week-${weekIndex}`} style={styles.weekColumn}>
+                <View key={`week-${weekIndex}`} style={[styles.weekColumn, { gap: GAP }]}>
                   {week.map((cell) => {
                     const value = entries[cell.key] ?? 0;
                     const selected = selectedDateKey === cell.key;
@@ -81,10 +111,13 @@ export function Heatmap365({
                         accessibilityRole="button"
                         accessibilityLabel={`${formatDisplayDate(parseDateKey(cell.key))}, value ${value}`}
                         disabled={!cell.inRange}
-                        onPress={() => onSelectDate(cell.key)}
+                        onPress={() => handleDayPress(cell.key)}
                         style={[
                           styles.cell,
                           {
+                            width: cellSize,
+                            height: cellSize,
+                            borderRadius: Math.max(2, Math.floor(cellSize / 4)),
                             backgroundColor: cell.inRange ? levels[intensity(value, maxValue, levels.length)] : 'transparent',
                             borderColor: selected ? '#111827' : cell.inRange ? '#D1D5DB' : 'transparent',
                             borderWidth: selected ? 2 : 1,
@@ -117,15 +150,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   dayLabels: {
-    paddingTop: 22,
     paddingRight: 7,
-    gap: GAP,
   },
   dayLabel: {
     width: 12,
-    height: CELL,
     fontSize: 9,
-    lineHeight: CELL,
     color: '#6B7280',
     textAlign: 'center',
   },
@@ -137,7 +166,6 @@ const styles = StyleSheet.create({
     height: 20,
   },
   monthSlot: {
-    width: CELL + GAP,
     overflow: 'visible',
   },
   monthLabel: {
@@ -145,16 +173,16 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#6B7280',
   },
+  monthLabelTight: {
+    width: 24,
+    fontSize: 8,
+  },
   weeksRow: {
     flexDirection: 'row',
-    gap: GAP,
   },
   weekColumn: {
-    gap: GAP,
   },
   cell: {
-    width: CELL,
-    height: CELL,
     borderRadius: 3,
   },
   legendRow: {

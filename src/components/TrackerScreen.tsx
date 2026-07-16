@@ -61,8 +61,9 @@ type RgbColor = {
 };
 
 const QUICK_COLORS: RgbColor[] = [
-  { r: 37, g: 99, b: 235 },
   { r: 34, g: 197, b: 94 },
+  { r: 22, g: 163, b: 74 },
+  { r: 37, g: 99, b: 235 },
   { r: 139, g: 92, b: 246 },
   { r: 249, g: 115, b: 22 },
   { r: 239, g: 68, b: 68 },
@@ -95,6 +96,10 @@ function heatmapLevelsFromRgb(color: RgbColor): string[] {
   return ['#FFFFFF', mixWithWhite(color, 0.22), mixWithWhite(color, 0.46), mixWithWhite(color, 0.72), rgbString(color)];
 }
 
+function isOldBlueDefault(color: RgbColor): boolean {
+  return color.r === 37 && color.g === 99 && color.b === 235;
+}
+
 function mergePending(base: EntryBundle, pending: PendingEntryMap): EntryBundle {
   const entries = { ...base.entries };
   const comments = { ...base.comments };
@@ -123,19 +128,22 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncingNow, setSyncingNow] = useState(false);
   const [saving, setSaving] = useState(false);
   const [statusText, setStatusText] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
-  const [heatmapColor, setHeatmapColor] = useState<RgbColor>({ r: 37, g: 99, b: 235 });
+  const [heatmapColor, setHeatmapColor] = useState<RgbColor>({ r: 34, g: 197, b: 94 });
   const [weekStartsOn, setWeekStartsOn] = useState<WeekStart>('monday');
   const [statsWindow, setStatsWindow] = useState<StatsWindow>(365);
   const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderBusy, setReminderBusy] = useState(false);
   const [reminderTime, setReminderTime] = useState('21:00');
   const [pendingCount, setPendingCount] = useState(0);
   const [renameValue, setRenameValue] = useState('');
   const [manageItemId, setManageItemId] = useState('');
+  const [landscapeGraphOpen, setLandscapeGraphOpen] = useState(false);
 
   const selectedKey = formatDateKey(selectedDate);
   const todayKey = formatDateKey(todayLocal());
@@ -144,26 +152,31 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
   const otherItems = items.filter((item) => item.id !== selectedItemId);
   const heatmapDays = statsWindow;
   const heatmapLevels = heatmapLevelsFromRgb(heatmapColor);
+  const androidTopInset = Platform.OS === 'android' ? NativeStatusBar.currentHeight ?? 0 : 0;
   const theme = darkMode
     ? {
-        page: '#0B1120',
-        card: '#111827',
-        cardSoft: '#1F2937',
+        page: '#000000',
+        card: '#0B0B0C',
+        cardSoft: '#151517',
         text: '#F9FAFB',
-        muted: '#9CA3AF',
-        border: '#374151',
-        input: '#0F172A',
-        primary: '#60A5FA',
+        muted: '#A1A1AA',
+        border: '#27272A',
+        input: '#111113',
+        primary: '#22C55E',
+        primarySoft: '#052E16',
+        primaryText: '#BBF7D0',
       }
     : {
-        page: '#F7F8FA',
+        page: '#F7FBF8',
         card: '#FFFFFF',
-        cardSoft: '#F9FAFB',
+        cardSoft: '#F2FBF5',
         text: '#111827',
         muted: '#6B7280',
-        border: '#E5E7EB',
+        border: '#DCEFE2',
         input: '#FFFFFF',
-        primary: '#2563EB',
+        primary: '#16A34A',
+        primarySoft: '#DCFCE7',
+        primaryText: '#14532D',
       };
 
   const applyEntries = useCallback(
@@ -191,11 +204,12 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
         };
         if (typeof saved.darkMode === 'boolean') setDarkMode(saved.darkMode);
         if (saved.heatmapColor) {
-          setHeatmapColor({
+          const savedColor = {
             r: clampRgb(saved.heatmapColor.r),
             g: clampRgb(saved.heatmapColor.g),
             b: clampRgb(saved.heatmapColor.b),
-          });
+          };
+          setHeatmapColor(isOldBlueDefault(savedColor) ? { r: 34, g: 197, b: 94 } : savedColor);
         }
         if (saved.weekStartsOn === 'monday' || saved.weekStartsOn === 'sunday') setWeekStartsOn(saved.weekStartsOn);
         if (saved.statsWindow === 30 || saved.statsWindow === 90 || saved.statsWindow === 365) setStatsWindow(saved.statsWindow);
@@ -245,6 +259,16 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
     },
     [applyEntries, selectedItemId, user],
   );
+
+  async function syncNow() {
+    setSyncingNow(true);
+    setStatusText('Syncing...');
+    try {
+      await refresh(true);
+    } finally {
+      setSyncingNow(false);
+    }
+  }
 
   useEffect(() => {
     void loadItems().catch(() => {
@@ -422,15 +446,71 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
       content: {
         title: 'Tracking Tabs',
         body: 'Add today’s counts.',
+        sound: false,
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DAILY,
         hour: Number(hourText),
         minute: Number(minuteText),
+        channelId: 'daily-reminders',
       },
     });
     setReminderEnabled(true);
     setStatusText(`Reminder set for ${nextTime}`);
+  }
+
+  async function updateReminder(nextEnabled = reminderEnabled, nextTime = reminderTime) {
+    const [hourText, minuteText] = nextTime.split(':');
+    const hour = Number(hourText);
+    const minute = Number(minuteText);
+    if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      Alert.alert('Use 24-hour time', 'Enter reminder time like 09:00 or 21:30.');
+      return;
+    }
+
+    setReminderBusy(true);
+    try {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+      if (!nextEnabled) {
+        setReminderEnabled(false);
+        setStatusText('Reminder off');
+        return;
+      }
+
+      if (Platform.OS === 'web') {
+        Alert.alert('Mobile only', 'Reminder notifications work in the installed mobile app.');
+        setReminderEnabled(false);
+        return;
+      }
+
+      const permission = await Notifications.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission needed', 'Allow notifications to use reminders.');
+        setReminderEnabled(false);
+        return;
+      }
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Tracking Tabs',
+          body: "Add today's counts.",
+          sound: false,
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour,
+          minute,
+          channelId: 'daily-reminders',
+        },
+      });
+      setReminderEnabled(true);
+      setStatusText(`Reminder set for ${nextTime}`);
+    } catch (error) {
+      setReminderEnabled(false);
+      Alert.alert('Reminder failed', error instanceof Error ? error.message : 'Could not schedule notification.');
+    } finally {
+      setReminderBusy(false);
+    }
   }
 
   function openTrackerActions(item: TrackingItem) {
@@ -535,19 +615,18 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
       <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
         <View style={styles.modalLayer}>
           <Pressable style={styles.backdrop} onPress={() => setDrawerOpen(false)} />
-          <View style={[styles.drawer, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View style={[styles.drawer, { backgroundColor: theme.card, borderColor: theme.border, paddingTop: androidTopInset + 18 }]}>
             <View style={styles.drawerHeader}>
               <View>
-                <Text style={[styles.drawerEyebrow, { color: theme.primary }]}>TRACKERS</Text>
                 <Text style={[styles.drawerTitle, { color: theme.text }]}>Tracking Tabs</Text>
               </View>
-              <Pressable onPress={() => setDrawerOpen(false)} style={styles.roundIconButton}>
+              <Pressable onPress={() => setDrawerOpen(false)} style={[styles.roundIconButton, { backgroundColor: theme.cardSoft }]}>
                 <Text style={styles.roundIconText}>x</Text>
               </Pressable>
             </View>
 
             {selectedItem ? (
-              <View style={[styles.drawerItemActive, { borderColor: theme.primary }]}>
+              <View style={[styles.drawerItemActive, { borderColor: theme.primary, backgroundColor: theme.primary }]}>
                 <Pressable
                   style={styles.drawerItemMain}
                   onPress={() => setDrawerOpen(false)}
@@ -599,7 +678,7 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
                 <Pressable
                   onPress={() => void addItem()}
                   disabled={saving}
-                  style={({ pressed }) => [styles.addTrackerButton, pressed && styles.pressed, saving && styles.disabled]}
+                  style={({ pressed }) => [styles.addTrackerButton, { backgroundColor: theme.primary }, pressed && styles.pressed, saving && styles.disabled]}
                 >
                   <Text style={styles.addTrackerText}>+</Text>
                 </Pressable>
@@ -634,7 +713,7 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
       <Modal visible={settingsOpen} transparent animationType="fade" onRequestClose={() => setSettingsOpen(false)}>
         <View style={styles.modalLayer}>
           <Pressable style={styles.backdrop} onPress={() => setSettingsOpen(false)} />
-          <View style={[styles.settingsSheet, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View style={[styles.settingsSheet, { backgroundColor: theme.card, borderColor: theme.border, paddingTop: androidTopInset + 20 }]}>
             <Text style={[styles.drawerTitle, { color: theme.text }]}>Menu</Text>
             <ScrollView contentContainerStyle={styles.settingsContent} showsVerticalScrollIndicator={false}>
               <View style={[styles.menuRow, { borderColor: theme.border }]}>
@@ -694,7 +773,7 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
                     <Pressable
                       key={day}
                       onPress={() => setWeekStartsOn(day)}
-                      style={[styles.segmentButton, weekStartsOn === day && styles.segmentButtonActive]}
+                      style={[styles.segmentButton, weekStartsOn === day && { backgroundColor: theme.primary, borderColor: theme.primary }]}
                     >
                       <Text style={[styles.segmentText, weekStartsOn === day && styles.segmentTextActive]}>
                         {day === 'monday' ? 'Monday' : 'Sunday'}
@@ -711,7 +790,7 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
                     <Pressable
                       key={days}
                       onPress={() => setStatsWindow(days)}
-                      style={[styles.segmentButton, statsWindow === days && styles.segmentButtonActive]}
+                      style={[styles.segmentButton, statsWindow === days && { backgroundColor: theme.primary, borderColor: theme.primary }]}
                     >
                       <Text style={[styles.segmentText, statsWindow === days && styles.segmentTextActive]}>{days}d</Text>
                     </Pressable>
@@ -727,15 +806,17 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
                   </View>
                   <Switch
                     value={reminderEnabled}
+                    disabled={reminderBusy}
                     onValueChange={(value) => {
-                      void applyReminder(value);
+                      setReminderEnabled(value);
+                      void updateReminder(value);
                     }}
                   />
                 </View>
                 <TextInput
                   value={reminderTime}
                   onChangeText={(text) => setReminderTime(text.replace(/[^0-9:]/g, '').slice(0, 5))}
-                  onBlur={() => void applyReminder(reminderEnabled, reminderTime)}
+                  onBlur={() => void updateReminder(reminderEnabled, reminderTime)}
                   placeholder="21:00"
                   placeholderTextColor={theme.muted}
                   style={[styles.settingsInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
@@ -747,8 +828,24 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
                 <Text style={[styles.menuHint, { color: theme.muted }]}>
                   {pendingCount === 0 ? 'All local changes are synced.' : `${pendingCount} change(s) waiting to sync.`}
                 </Text>
-                <Pressable onPress={() => void refresh(true)} style={[styles.menuButton, { borderColor: theme.border }]}>
-                  <Text style={[styles.menuButtonText, { color: theme.text }]}>Sync now</Text>
+                <Pressable
+                  onPress={() => void syncNow()}
+                  disabled={syncingNow}
+                  style={({ pressed }) => [
+                    styles.menuButton,
+                    { borderColor: theme.border, backgroundColor: syncingNow ? theme.cardSoft : theme.card },
+                    pressed && styles.pressed,
+                    syncingNow && styles.disabled,
+                  ]}
+                >
+                  {syncingNow ? (
+                    <View style={styles.buttonInline}>
+                      <ActivityIndicator size="small" color={theme.primary} />
+                      <Text style={[styles.menuButtonText, { color: theme.text }]}>Syncing...</Text>
+                    </View>
+                  ) : (
+                    <Text style={[styles.menuButtonText, { color: theme.text }]}>Sync now</Text>
+                  )}
                 </Pressable>
               </View>
 
@@ -767,6 +864,38 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
             </ScrollView>
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        visible={landscapeGraphOpen}
+        animationType="fade"
+        supportedOrientations={['landscape', 'portrait']}
+        onRequestClose={() => setLandscapeGraphOpen(false)}
+      >
+        <SafeAreaView style={[styles.fullGraphPage, { backgroundColor: theme.page }]}>
+          <View style={styles.fullGraphHeader}>
+            <View style={styles.headerTitleBlock}>
+              <Text style={[styles.fullGraphTitle, { color: theme.text }]} numberOfLines={1}>
+                {selectedItem?.name ?? 'Tracker'} graph
+              </Text>
+              <Text style={[styles.cardSubtitle, { color: theme.muted }]}>Press Android back to return.</Text>
+            </View>
+            <Pressable onPress={() => setLandscapeGraphOpen(false)} style={[styles.roundIconButton, { backgroundColor: theme.cardSoft }]}>
+              <Text style={[styles.roundIconText, { color: theme.text }]}>x</Text>
+            </Pressable>
+          </View>
+          <View style={[styles.fullGraphCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Heatmap365
+              entries={entries}
+              selectedDateKey={selectedKey}
+              levels={heatmapLevels}
+              weekStartsOn={weekStartsOn}
+              days={heatmapDays}
+              fitToWidth
+              onSelectDate={(key) => changeDate(parseDateKey(key))}
+            />
+          </View>
+        </SafeAreaView>
       </Modal>
 
       <ScrollView
@@ -820,7 +949,7 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
           <View style={styles.cardHeader}>
             <View>
               <Text style={[styles.cardTitle, { color: theme.text }]}>{selectedItem?.name ?? 'Tracker'} graph</Text>
-              <Text style={[styles.cardSubtitle, { color: theme.muted }]}>Tap any square to edit that date.</Text>
+              <Text style={[styles.cardSubtitle, { color: theme.muted }]}>Tap a square to edit. Double tap for full view.</Text>
             </View>
             <Text style={[styles.syncStatus, { color: theme.muted }]}>Max {stats.maxValue}</Text>
           </View>
@@ -831,6 +960,7 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
             weekStartsOn={weekStartsOn}
             days={heatmapDays}
             onSelectDate={(key) => changeDate(parseDateKey(key))}
+            onDoubleTap={() => setLandscapeGraphOpen(true)}
           />
         </View>
 
@@ -848,10 +978,10 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
 
             <Pressable
               onPress={() => setShowPicker(true)}
-              style={({ pressed }) => [styles.dateButton, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.dateButton, { backgroundColor: theme.primarySoft, borderColor: theme.primary }, pressed && styles.pressed]}
             >
-              <Text style={styles.dateButtonText}>{formatDisplayDate(selectedDate)}</Text>
-              <Text style={styles.dateHint}>Tap to choose a date</Text>
+              <Text style={[styles.dateButtonText, { color: theme.primaryText }]}>{formatDisplayDate(selectedDate)}</Text>
+              <Text style={[styles.dateHint, { color: theme.primary }]}>Tap to choose a date</Text>
             </Pressable>
 
             <Pressable
@@ -892,7 +1022,7 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
               keyboardType="number-pad"
               selectTextOnFocus
               maxLength={3}
-              style={[styles.numberInput, { backgroundColor: theme.input, color: theme.text }]}
+              style={[styles.numberInput, { backgroundColor: theme.input, borderColor: theme.primary, color: theme.text }]}
               accessibilityLabel="Daily number"
             />
             <Pressable onPress={() => adjustValue(1)} style={({ pressed }) => [styles.counterButton, { backgroundColor: theme.cardSoft, borderColor: theme.border }, pressed && styles.pressed]}>
@@ -926,7 +1056,7 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
             <Pressable
               onPress={() => void save()}
               disabled={saving}
-              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, saving && styles.disabled]}
+              style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.primary }, pressed && styles.pressed, saving && styles.disabled]}
             >
               {saving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>Save</Text>}
             </Pressable>
@@ -959,6 +1089,29 @@ const styles = StyleSheet.create({
     marginTop: 12,
     color: '#6B7280',
   },
+  fullGraphPage: {
+    flex: 1,
+    padding: 14,
+    backgroundColor: '#F7FBF8',
+  },
+  fullGraphHeader: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 10,
+  },
+  fullGraphTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  fullGraphCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    justifyContent: 'center',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -987,7 +1140,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1.4,
     fontWeight: '800',
-    color: '#2563EB',
+    color: '#16A34A',
   },
   title: {
     fontSize: 28,
@@ -1055,7 +1208,7 @@ const styles = StyleSheet.create({
   drawerItemActive: {
     borderWidth: 2,
     borderRadius: 14,
-    backgroundColor: '#2563EB',
+    backgroundColor: '#16A34A',
     paddingLeft: 14,
     paddingVertical: 10,
     paddingRight: 8,
@@ -1226,8 +1379,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   segmentButtonActive: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
+    backgroundColor: '#16A34A',
+    borderColor: '#16A34A',
   },
   segmentText: {
     color: '#374151',
@@ -1278,6 +1431,11 @@ const styles = StyleSheet.create({
   menuButtonText: {
     fontSize: 14,
     fontWeight: '800',
+  },
+  buttonInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   logoutMenuButton: {
     backgroundColor: '#FEF2F2',
@@ -1392,7 +1550,7 @@ const styles = StyleSheet.create({
     minWidth: 72,
     minHeight: 46,
     borderRadius: 10,
-    backgroundColor: '#2563EB',
+    backgroundColor: '#16A34A',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
@@ -1429,17 +1587,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 12,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#DCFCE7',
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: '#16A34A',
   },
   dateButtonText: {
-    color: '#1E3A8A',
+    color: '#14532D',
     fontWeight: '800',
     fontSize: 14,
   },
   dateHint: {
-    color: '#3B82F6',
+    color: '#16A34A',
     fontSize: 10,
     marginTop: 2,
   },
@@ -1475,7 +1633,7 @@ const styles = StyleSheet.create({
     height: 66,
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: '#2563EB',
+    borderColor: '#16A34A',
     textAlign: 'center',
     fontSize: 30,
     fontWeight: '800',
@@ -1514,7 +1672,7 @@ const styles = StyleSheet.create({
     flex: 1.4,
     minHeight: 50,
     borderRadius: 12,
-    backgroundColor: '#2563EB',
+    backgroundColor: '#16A34A',
     alignItems: 'center',
     justifyContent: 'center',
   },

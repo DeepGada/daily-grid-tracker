@@ -1,17 +1,34 @@
 import type { Session } from '@supabase/supabase-js';
+import * as Notifications from 'expo-notifications';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
 import { AuthScreen } from './src/components/AuthScreen';
 import { TrackerScreen } from './src/components/TrackerScreen';
 import { isSupabaseConfigured, supabase } from './src/lib/supabase';
 
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    if (Platform.OS === 'android') {
+      void Notifications.setNotificationChannelAsync('daily-reminders', {
+        name: 'Daily reminders',
+        importance: Notifications.AndroidImportance.DEFAULT,
+      });
+    }
+
     if (!isSupabaseConfigured) {
       setReady(true);
       return;
