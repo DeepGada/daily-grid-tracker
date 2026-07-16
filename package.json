@@ -8,6 +8,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "build:web": "expo export --platform web",
+    "build:web:gh-pages": "expo export --platform web && node scripts/prepare-gh-pages.js",
     "typecheck": "tsc --noEmit",
     "doctor": "npx expo-doctor@latest",
     "build:apk": "npx eas-cli@latest build --platform android --profile preview",
