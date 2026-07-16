@@ -19,12 +19,22 @@ create table if not exists public.daily_entries (
   user_id uuid not null references auth.users(id) on delete cascade,
   entry_date date not null,
   value integer not null check (value >= 0 and value <= 999),
+  comment text check (comment is null or char_length(comment) <= 100),
   updated_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );
 
 alter table public.daily_entries
   add column if not exists item_id uuid references public.tracked_items(id) on delete cascade;
+
+alter table public.daily_entries
+  add column if not exists comment text;
+
+alter table public.daily_entries
+  drop constraint if exists daily_entries_comment_length_check;
+
+alter table public.daily_entries
+  add constraint daily_entries_comment_length_check check (comment is null or char_length(comment) <= 100);
 
 insert into public.tracked_items (user_id, name)
 select distinct user_id, 'Daily Count'

@@ -35,7 +35,7 @@ import {
   syncOneEntry,
   writeCachedEntries,
 } from '../services/entries';
-import type { EntryMap, TrackingItem } from '../types';
+import type { CommentMap, EntryBundle, EntryMap, PendingEntryMap, TrackingItem } from '../types';
 import {
   addDays,
   compareDateKeys,
@@ -95,13 +95,20 @@ function heatmapLevelsFromRgb(color: RgbColor): string[] {
   return ['#FFFFFF', mixWithWhite(color, 0.22), mixWithWhite(color, 0.46), mixWithWhite(color, 0.72), rgbString(color)];
 }
 
-function mergePending(base: EntryMap, pending: EntryMap): EntryMap {
-  const merged = { ...base };
-  for (const [key, value] of Object.entries(pending)) {
-    if (value <= 0) delete merged[key];
-    else merged[key] = value;
+function mergePending(base: EntryBundle, pending: PendingEntryMap): EntryBundle {
+  const entries = { ...base.entries };
+  const comments = { ...base.comments };
+  for (const [key, entry] of Object.entries(pending)) {
+    if (entry.value <= 0) {
+      delete entries[key];
+      delete comments[key];
+    } else {
+      entries[key] = entry.value;
+      if (entry.comment) comments[key] = entry.comment;
+      else delete comments[key];
+    }
   }
-  return merged;
+  return { entries, comments };
 }
 
 export function TrackerScreen({ user }: TrackerScreenProps) {
@@ -109,8 +116,10 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
   const [selectedItemId, setSelectedItemId] = useState('');
   const [newItemName, setNewItemName] = useState('');
   const [entries, setEntries] = useState<EntryMap>({});
+  const [comments, setComments] = useState<CommentMap>({});
   const [selectedDate, setSelectedDate] = useState(todayLocal());
   const [inputValue, setInputValue] = useState('0');
+  const [commentValue, setCommentValue] = useState('');
   const [showPicker, setShowPicker] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -158,9 +167,10 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
       };
 
   const applyEntries = useCallback(
-    async (next: EntryMap) => {
+    async (next: EntryBundle) => {
       if (!selectedItemId) return;
-      setEntries(next);
+      setEntries(next.entries);
+      setComments(next.comments);
       await writeCachedEntries(user.id, selectedItemId, next);
     },
     [selectedItemId, user.id],
@@ -224,7 +234,9 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
         const cached = await readCachedEntries(user.id, selectedItemId);
         const pending = await readPendingEntries(user.id, selectedItemId);
         setPendingCount(Object.keys(pending).length);
-        setEntries(mergePending(cached, pending));
+        const next = mergePending(cached, pending);
+        setEntries(next.entries);
+        setComments(next.comments);
         setStatusText('Offline view');
       } finally {
         setLoading(false);
@@ -244,13 +256,15 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
   useEffect(() => {
     if (!selectedItemId) return;
     setEntries({});
+    setComments({});
     setLoading(true);
     void refresh();
   }, [refresh, selectedItemId]);
 
   useEffect(() => {
     setInputValue(String(entries[selectedKey] ?? 0));
-  }, [entries, selectedKey]);
+    setCommentValue(comments[selectedKey] ?? '');
+  }, [comments, entries, selectedKey]);
 
   const stats = useMemo(() => {
     const keys = getRollingDateKeys(statsWindow);
@@ -311,22 +325,27 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
     }
 
     const previous = { ...entries };
+    const previousComments = { ...comments };
     const optimistic = { ...entries };
+    const optimisticComments = { ...comments };
+    const cleanComment = commentValue.trim().slice(0, 100);
     if (value === 0) delete optimistic[selectedKey];
     else optimistic[selectedKey] = value;
+    if (value <= 0 || !cleanComment) delete optimisticComments[selectedKey];
+    else optimisticComments[selectedKey] = cleanComment;
 
     setSaving(true);
-    await applyEntries(optimistic);
+    await applyEntries({ entries: optimistic, comments: optimisticComments });
 
     try {
-      await syncOneEntry(user, selectedItemId, selectedKey, value);
+      await syncOneEntry(user, selectedItemId, selectedKey, value, cleanComment);
       setStatusText('Saved and synced');
     } catch {
       try {
-        await queuePendingEntry(user.id, selectedItemId, selectedKey, value);
+        await queuePendingEntry(user.id, selectedItemId, selectedKey, value, cleanComment);
         setStatusText('Saved on this phone; waiting to sync');
       } catch {
-        await applyEntries(previous);
+        await applyEntries({ entries: previous, comments: previousComments });
         Alert.alert('Save failed', 'The entry could not be saved locally or online.');
       }
     } finally {
@@ -341,14 +360,16 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
     if (previous === 0) return;
 
     const optimistic = { ...entries };
+    const optimisticComments = { ...comments };
     delete optimistic[selectedKey];
-    await applyEntries(optimistic);
+    delete optimisticComments[selectedKey];
+    await applyEntries({ entries: optimistic, comments: optimisticComments });
 
     try {
       await syncOneEntry(user, selectedItemId, selectedKey, 0);
       setStatusText('Cleared and synced');
     } catch {
-      await queuePendingEntry(user.id, selectedItemId, selectedKey, 0);
+      await queuePendingEntry(user.id, selectedItemId, selectedKey, 0, '');
       setStatusText('Cleared on this phone; waiting to sync');
     }
   }
@@ -758,7 +779,6 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
             <Text style={[styles.headerIconText, { color: theme.text }]}>☰</Text>
           </Pressable>
           <View style={styles.headerTitleBlock}>
-            <Text style={[styles.eyebrow, { color: theme.primary }]}>PRIVATE TRACKER</Text>
             <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{selectedItem?.name ?? 'Tracking Tabs'}</Text>
           </View>
           <Pressable onPress={() => setSettingsOpen(true)} style={({ pressed }) => [styles.headerIconButton, { backgroundColor: theme.card, borderColor: theme.border }, pressed && styles.pressed]}>
@@ -878,6 +898,22 @@ export function TrackerScreen({ user }: TrackerScreenProps) {
             <Pressable onPress={() => adjustValue(1)} style={({ pressed }) => [styles.counterButton, { backgroundColor: theme.cardSoft, borderColor: theme.border }, pressed && styles.pressed]}>
               <Text style={[styles.counterButtonText, { color: theme.text }]}>+</Text>
             </Pressable>
+          </View>
+
+          <View style={styles.commentBlock}>
+            <View style={styles.commentHeader}>
+              <Text style={[styles.fieldLabel, { color: theme.text, marginBottom: 0 }]}>Comment</Text>
+              <Text style={[styles.commentCounter, { color: theme.muted }]}>{commentValue.length}/100</Text>
+            </View>
+            <TextInput
+              value={commentValue}
+              onChangeText={(text) => setCommentValue(text.slice(0, 100))}
+              placeholder="Optional note for this date"
+              placeholderTextColor={theme.muted}
+              multiline
+              maxLength={100}
+              style={[styles.commentInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
+            />
           </View>
 
           <View style={styles.actionRow}>
@@ -1445,6 +1481,29 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#111827',
     backgroundColor: '#FFFFFF',
+  },
+  commentBlock: {
+    marginTop: 18,
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  commentCounter: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  commentInput: {
+    minHeight: 78,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlignVertical: 'top',
   },
   actionRow: {
     flexDirection: 'row',
