@@ -119,7 +119,10 @@ EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
 
 `.env` is ignored by Git.
 
-For GitHub Pages, the same public Supabase values are set in `.github/workflows/pages.yml`.
+For GitHub Pages, set these in GitHub repo settings:
+
+- `EXPO_PUBLIC_SUPABASE_URL` as a repository variable
+- `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` as a repository secret
 
 ## Install
 

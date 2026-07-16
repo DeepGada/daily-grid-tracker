@@ -19,8 +19,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      EXPO_PUBLIC_SUPABASE_URL: https://funschaumxcxdpveywib.supabase.co
-      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_Wcq1Bkqktt4dQYAiDbh9Pg_YRJt1VbW
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
